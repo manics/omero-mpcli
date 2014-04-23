@@ -45,7 +45,8 @@ class CalculationException(Exception):
 
 class Calculator(object):
 
-    def __init__(self, host=None, port=None, user=None, password=None):
+    def __init__(self, host=None, port=None, user=None, password=None,
+                 calculate=None, groupid=-1):
         if not host:
             host = raw_input('Host: ')
         if not port:
@@ -59,57 +60,117 @@ class Calculator(object):
         self.session = self.client.createSession(user, password)
         self.client.enableKeepAlive(60)
         self.conn = omero.gateway.BlitzGateway(client_obj=self.client)
+        self.conn.SERVICE_OPTS.setOmeroGroup(groupid)
         self.detach = True
+
+        self.calculate = calculate
 
     def close(self):
         if self.detach:
-            self.session.detachOnDestroy()
+            try:
+                self.session.detachOnDestroy()
+            except Exception as e:
+                print e
         self.client.closeSession()
 
-    def imageGenerator(self, dsids):
-        for dsid in dsids:
-            ds = self.conn.getObject('Dataset', dsid)
-            if not ds:
-                raise CalculationException('Dataset id not found: %d' % dsid)
+    def imageGenerator(self, objs):
+        for o in objs:
+            log.info(o)
+            if isinstance(o, omero.gateway._ImageWrapper):
+                yield o
+            else:
+                children = o.listChildren()
+                for im in self.imageGenerator(children):
+                    yield im
 
-            for im in ds.listChildren():
-                yield im
+    def genObjects(self, typeids):
+        for (t, i) in typeids:
+            o = self.conn.getObject(t, i)
+            if not o:
+                raise CalculationException(
+                    'Unable to get object: %s %d' % (t, i))
+            yield o
 
-    def getComputationList(self, dsids):
-        clist = []
-        for im in self.imageGenerator(dsids):
+    def genComputationList(self, typeids):
+        """
+        typeids: A list of (TypeName, Id) pairs where TypeName is Image,
+        Dataset or Project
+        """
+        def planeParamsGen(im):
             for c in xrange(im.getSizeC()):
                 for z in xrange(im.getSizeZ()):
                     for t in xrange(im.getSizeT()):
-                        clist.append(
-                            (im.id, c, z, t, im.getSizeX(), im.getSizeY()))
-        return clist
+                        yield (im.id, c, z, t, im.getSizeX(), im.getSizeY())
 
-    def extractFeatures(self, iid, c, z, t):
+        objGen = self.genObjects(typeids)
+        for im in self.imageGenerator(objGen):
+            for params in planeParamsGen(im):
+                yield params
+
+    def setCalculate(func):
         """
-        Calculate features for a single image plane. Note this takes in an
-        image id instead of an image object to support batch jobs where a list
-        of parameter sets can be provided.
+        func is a function that calculates features given a single image plane.
+        Note this takes in an image id instead of an image object to support
+        batch jobs where a list of parameter sets can be provided.
+
+        func: Function of the form r = func(conn, iid, c, z, t)
+          conn: BlitzGateway object
+          iid: Image ID
+          c, z, t: Index of the C/Z/T plance
+          r: A dict with fields names ([string]), values ([double]), and
+            version (string)
         """
-        im = self.conn.getObject('Image', iid)
-        if not im:
-            raise CalculationException('Image id not found: %d' % iid)
+        self.calculate = func
 
-        # Calculate features for a single plane (c/z/t)
-        pychrm_matrix = PyImageMatrix()
-        pychrm_matrix.allocate(im.getSizeX(), im.getSizeY())
-        numpy_matrix = pychrm_matrix.as_ndarray()
 
-        numpy_matrix[:] = im.getPrimaryPixels().getPlane(
-            theZ=z, theC=c, theT=t)
-        feature_plan = pychrm.StdFeatureComputationPlans.getFeatureSet()
-        options = ""  # Wnd-charm options
-        ft = Signatures.NewFromFeatureComputationPlan(
-            pychrm_matrix, feature_plan, options)
-        # ft.names
-        # ft.values
-        # ft.version
-        return ft
+def extractFeaturesPychrmSmall(conn, iid, c, z, t):
+    """
+    Calculate features for a single image plane. Note this takes in an
+    image id instead of an image object to support batch jobs where a list
+    of parameter sets can be provided.
+    """
+    im = self.conn.getObject('Image', iid)
+    if not im:
+        raise CalculationException('Image id not found: %d' % iid)
+
+    # Calculate features for a single plane (c/z/t)
+    pychrm_matrix = PyImageMatrix()
+    pychrm_matrix.allocate(im.getSizeX(), im.getSizeY())
+    numpy_matrix = pychrm_matrix.as_ndarray()
+
+    numpy_matrix[:] = im.getPrimaryPixels().getPlane(
+        theZ=z, theC=c, theT=t)
+    feature_plan = pychrm.StdFeatureComputationPlans.getFeatureSet()
+    options = ""  # Wnd-charm options
+    fts = Signatures.NewFromFeatureComputationPlan(
+        pychrm_matrix, feature_plan, options)
+
+    ft = {
+        'names': fts.names,
+        'values': ft.values,
+        'version': fts.version
+    }
+    return ft
+
+
+def meanIntensity(conn, iid, c, z, t):
+    """
+    Calculate features for a single image plane. Note this takes in an
+    image id instead of an image object to support batch jobs where a list
+    of parameter sets can be provided.
+    """
+    im = conn.getObject('Image', iid)
+    if not im:
+        raise CalculationException('Image id not found: %d' % iid)
+
+    # Calculate features for a single plane (c/z/t)
+    m = im.getPrimaryPixels().getPlane(theZ=z, theC=c, theT=t)
+    ft = {
+        'names': ['min', 'max', 'mean'],
+        'values': [m.min(), m.max(), m.mean()],
+        'version': '0'
+    }
+    return ft
 
 
 class FeatureFile(object):
