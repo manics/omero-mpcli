@@ -24,6 +24,8 @@ Client side calculation of features, stored locally.
 Uses multiprocessing to parallelise calculations on the local machine.
 """
 
+import argparse
+import datetime
 import errno
 import getpass
 import logging
@@ -61,7 +63,7 @@ class Calculator(object):
     def __init__(self, host=None, port=None, user=None, password=None,
                  sessionid=None, groupid=-1, detach=True):
         if not host:
-            host = raw_input('Host: ')
+            host = 'localhost'
         if not port:
             port = 4064
         if not sessionid:
@@ -282,7 +284,7 @@ def run1(params):
             with FeatureFile(*ftparams) as ff:
                 log.info('Calculating features')
                 feats = calculate(c.conn, *ftparams)
-                log.info(feats)
+                log.debug(feats)
                 ff.save(feats['values'])
                 return 'Completed: %s' % str(ftparams)
     except FeatureFileAlreadyExists as e:
@@ -293,35 +295,64 @@ def run1(params):
         return 'Failed: %s' % e
 
 
-def main():
+def main(args):
     logging.basicConfig(format='%(asctime)s %(levelname)-5.5s %(message)s')
 
-    host = 'host'
-    port = 4064
-    user = 'user'
-    password = 'password'
-    threads = 8
-    out = 'out.pkl'
+    log.info(args)
 
-    items = [('Dataset', 1802), ('Project', 1014)]
+    out = 'out-%s.pkl' % (datetime.datetime.strftime(
+        datetime.datetime.now(), '%Y%m%d-%H%M%S'))
 
-    with Calculator(host, port, user, password=password, detach=False) as c:
-        complist = c.genComputationList(items)
+    # items = [('Dataset', 1802), ('Project', 1014)]
+
+    with Calculator(args.server, args.port, args.user, password=args.password,
+                    detach=False) as c:
+        complist = c.genComputationList(args.ordered_arguments)
         sessionid = c.client.getSessionId()
 
-        paramsets = [{'host': host, 'port': port, 'sessionid': sessionid,
-                      'ftparams': p} for p in complist]
+        paramsets = [{'host': args.server, 'port': args.port,
+                      'sessionid': sessionid, 'ftparams': p} for p in complist]
         log.debug('paramsets: %s', [p['ftparams'] for p in paramsets])
 
-        log.info('Creating pool of %d threads', threads)
-        pool = multiprocessing.Pool(threads)
+        log.info('Creating pool of %d threads', args.threads)
+        pool = multiprocessing.Pool(args.threads)
         results = pool.map(run1, paramsets)
+
+        log.info('Saving statuses to: %s', out)
         with open(out, 'wb') as f:
             pickle.dump(results, f)
         # log.info('pool.imap results: %s', results)
-        log.info('pool.map results: [%d]', len(results))
+        log.info('pool.map results length: [%d]', len(results))
 
     log.info('Main thread exiting')
+
+
+def parse_args(args=None):
+    class StoreOrdered(argparse.Action):
+        """
+        Based on http://stackoverflow.com/a/9028031
+        """
+        ORDERED_DEST = 'ordered_arguments'
+
+        def __call__(self, parser, namespace, values, option_string=None):
+            v = getattr(namespace, self.ORDERED_DEST, [])
+            v.append((self.dest, values))
+            setattr(namespace, self.ORDERED_DEST, v)
+
+    parser = argparse.ArgumentParser()
+
+    parser.add_argument('--server', default=None)
+    parser.add_argument('--port', default=None, type=int)
+    parser.add_argument('--user', default=None)
+    parser.add_argument('--group', default=None, type=int)
+    parser.add_argument('--password', default=None)
+    parser.add_argument(
+        '--threads', default=multiprocessing.cpu_count(), type=int)
+
+    parser.add_argument('-p', action=StoreOrdered, dest='Project', type=int)
+    parser.add_argument('-d', action=StoreOrdered, dest='Dataset', type=int)
+    parser.add_argument('-i', action=StoreOrdered, dest='Image', type=int)
+    return parser.parse_args(args)
 
 
 if __name__ == '__main__':
@@ -329,4 +360,5 @@ if __name__ == '__main__':
     try:
         __IPYTHON__
     except NameError:
-        main()
+        args = parse_args()
+        main(args)
