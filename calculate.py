@@ -274,8 +274,8 @@ class FeatureFileZ(FeatureFile):
         self.saved = True
 
 
-calculate = meanIntensity
-# calculate = extractFeaturesPychrmSmall
+# calculate = meanIntensity
+calculate = extractFeaturesPychrmSmall
 """
 calculate should be a function that calculates features given a single image
 plane.
