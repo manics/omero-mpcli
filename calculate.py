@@ -19,14 +19,18 @@
 # with this program; if not, write to the Free Software Foundation, Inc.,
 # 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 
+"""
+Client side calculation of features, stored locally.
+Uses multiprocessing to parallelise calculations on the local machine.
+"""
+
 import errno
 import getpass
 import logging
+import multiprocessing
 import numpy
 import os
-import multiprocessing
 import pickle
-import traceback
 
 import omero
 import omero.gateway
@@ -50,6 +54,7 @@ class CalculationException(Exception):
 
 class FeatureFileAlreadyExists(CalculationException):
     pass
+
 
 class Calculator(object):
 
@@ -223,7 +228,7 @@ class FeatureFile(object):
                     if f.tell() > 0:
                         raise FeatureFileAlreadyExists(
                             'Feature file already exists: %s (%d B)' % (
-                            self.npy, f.tell()))
+                                self.npy, f.tell()))
                 finally:
                     f.close()
             except IOError:
@@ -253,7 +258,7 @@ class FeatureFile(object):
 
 
 calculate = meanIntensity
-#calculate = extractFeaturesPychrmSmall
+# calculate = extractFeaturesPychrmSmall
 """
 calculate should be a function that calculates features given a single image
 plane.
@@ -295,7 +300,7 @@ def main():
     port = 4064
     user = 'user'
     password = 'password'
-    threads = 40
+    threads = 8
     out = 'out.pkl'
 
     items = [('Dataset', 1802), ('Project', 1014)]
@@ -313,7 +318,7 @@ def main():
         results = pool.map(run1, paramsets)
         with open(out, 'wb') as f:
             pickle.dump(results, f)
-        #log.info('pool.imap results: %s', results)
+        # log.info('pool.imap results: %s', results)
         log.info('pool.map results: [%d]', len(results))
 
     log.info('Main thread exiting')
