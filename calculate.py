@@ -253,10 +253,25 @@ class FeatureFile(object):
         if self.saved:
             log.debug('Renaming: %s->%s', self.fh.name, self.npy)
             os.rename(self.fh.name, self.npy)
+            log.info('Saved: %s', self.npy)
         else:
             log.debug('Empty, deleting: %s', self.fh.name)
             os.unlink(self.fh.name)
         self.fh.close()
+
+
+class FeatureFileZ(FeatureFile):
+    """
+    FeatureFile that saves to numpy archives instead of single arrays
+    """
+    def __init__(self, iid, c, z, t):
+        super(FeatureFileZ, self).__init__(iid, c, z, t)
+        self.npy = os.path.join(self.dir, self.filename + '.npz')
+
+    def save(self, **kwargs):
+        log.debug('Saving: %s', self.fh.name)
+        numpy.savez(self.fh, **kwargs)
+        self.saved = True
 
 
 calculate = meanIntensity
@@ -281,11 +296,13 @@ def run1(params):
     try:
         ftparams = params.pop('ftparams')
         with Calculator(**params) as c:
-            with FeatureFile(*ftparams) as ff:
+            # with FeatureFile(*ftparams) as ff:
+            with FeatureFileZ(*ftparams) as ff:
                 log.info('Calculating features')
                 feats = calculate(c.conn, *ftparams)
                 log.debug(feats)
-                ff.save(feats['values'])
+                # ff.save(feats['values'])
+                ff.save(**feats)
                 return 'Completed: %s' % str(ftparams)
     except FeatureFileAlreadyExists as e:
         log.error(e)
