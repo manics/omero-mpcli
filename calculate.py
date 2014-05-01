@@ -48,6 +48,9 @@ class CalculationException(Exception):
         super(CalculationException, self).__init__(msg)
 
 
+class FeatureFileAlreadyExists(CalculationException):
+    pass
+
 class Calculator(object):
 
     def __init__(self, host=None, port=None, user=None, password=None,
@@ -218,8 +221,9 @@ class FeatureFile(object):
                 try:
                     f.seek(0, 2)
                     if f.tell() > 0:
-                        raise CalculationException(
-                            'Feature file already exists: %s' % self.npy)
+                        raise FeatureFileAlreadyExists(
+                            'Feature file already exists: %s (%d B)' % (
+                            self.npy, f.tell()))
                 finally:
                     f.close()
             except IOError:
@@ -249,6 +253,7 @@ class FeatureFile(object):
 
 
 calculate = meanIntensity
+#calculate = extractFeaturesPychrmSmall
 """
 calculate should be a function that calculates features given a single image
 plane.
@@ -275,13 +280,17 @@ def run1(params):
                 log.info(feats)
                 ff.save(feats['values'])
                 return 'Completed: %s' % str(ftparams)
-    except Exception:
-        err = traceback.format_exc()
-        log.error(err)
-        return 'Failed: %s' % err
+    except FeatureFileAlreadyExists as e:
+        log.error(e)
+        return 'Already exists: %s' % e
+    except Exception as e:
+        log.error(e, exc_info=True)
+        return 'Failed: %s' % e
 
 
 def main():
+    logging.basicConfig(format='%(asctime)s %(levelname)-5.5s %(message)s')
+
     host = 'host'
     port = 4064
     user = 'user'
@@ -304,7 +313,8 @@ def main():
         results = pool.map(run1, paramsets)
         with open(out, 'wb') as f:
             pickle.dump(results, f)
-        log.info('pool.imap results: %s', results)
+        #log.info('pool.imap results: %s', results)
+        log.info('pool.map results: [%d]', len(results))
 
     log.info('Main thread exiting')
 
