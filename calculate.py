@@ -324,7 +324,15 @@ def main(args):
 
     with Calculator(args.server, args.port, args.user, password=args.password,
                     detach=False) as c:
+        # Remember complist is a generator
         complist = c.genComputationList(args.ordered_arguments)
+
+        if args.dry_run:
+            log.info('Computation list:')
+            for p in complist:
+                log.info('  %s', p)
+            return
+
         sessionid = c.client.getSessionId()
 
         paramsets = [{'host': args.server, 'port': args.port,
@@ -365,6 +373,8 @@ def parse_args(args=None):
     parser.add_argument('--password', default=None)
     parser.add_argument(
         '--threads', default=multiprocessing.cpu_count(), type=int)
+
+    parser.add_argument('-n', '--dry-run', action='store_true')
 
     parser.add_argument('-p', action=StoreOrdered, dest='Project', type=int)
     parser.add_argument('-d', action=StoreOrdered, dest='Dataset', type=int)
