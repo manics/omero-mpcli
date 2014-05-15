@@ -75,8 +75,10 @@ class Calculator(object):
         self.client = omero.client(host, port)
         if sessionid:
             self.session = self.client.joinSession(sessionid)
+            log.info('Joined session as: %s', self.session)
         else:
             self.session = self.client.createSession(user, password)
+            log.info('Created session: %s', self.session)
         self.client.enableKeepAlive(60)
         self.conn = omero.gateway.BlitzGateway(client_obj=self.client)
         self.conn.SERVICE_OPTS.setOmeroGroup(groupid)
