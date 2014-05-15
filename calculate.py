@@ -297,9 +297,9 @@ def run1(params):
     log.info('params: %s', params)
     try:
         ftparams = params.pop('ftparams')
-        with Calculator(**params) as c:
-            # with FeatureFile(*ftparams) as ff:
-            with FeatureFileZ(*ftparams) as ff:
+        # with FeatureFile(*ftparams) as ff:
+        with FeatureFileZ(*ftparams) as ff:
+            with Calculator(**params) as c:
                 log.info('Calculating features')
                 feats = calculate(c.conn, *ftparams)
                 log.debug(feats)
