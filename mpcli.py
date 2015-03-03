@@ -115,7 +115,7 @@ def main(args, common, params):
         sessionid = c.client.getSessionId()
         cmd = common
         if args.login:
-            cmd + ['-s', c.client.getProperty('omero.host'), '-p',
+            cmd += ['-s', c.client.getProperty('omero.host'), '-p',
                    c.client.getProperty('omero.port'), '-k', sessionid]
         print cmd, params, args.groupsize
         paramslist = get_params_list(cmd, params, args.groupsize)
@@ -128,7 +128,10 @@ def main(args, common, params):
 
         log.info('Creating pool of %d threads', args.threads)
         pool = multiprocessing.Pool(args.threads)
-        results = pool.map(invokecli, paramslist)
+        #results = pool.map(invokecli, paramslist)
+        results = []
+        for r in pool.imap(invokecli, paramslist):
+            results.append(r)
 
         log.info('Saving results to: %s', out)
         with open(out, 'wb') as f:
@@ -183,4 +186,4 @@ if __name__ == '__main__':
 
 # Example:
 # calculate.py --server server --user user --password password --groupsize 3 \
-#     import -d 1 -- a.img b.img c.img ...
+#     --login import -d 1 -- a.img b.img c.img ...
