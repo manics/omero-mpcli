@@ -90,16 +90,22 @@ class MpOmeroCli(object):
         self.client.closeSession()
 
 
-def get_params_list(common, params, groupsize):
+def get_params_list(opts, common, params, groupsize):
     for i in xrange(0, len(params), groupsize):
-        yield list(common) + params[i:i + groupsize]
+        yield (opts, list(common) + params[i:i + groupsize])
 
 
-def invokecli(cmdline):
+def invokecli(args):
+    opts, cmdline = args
     cli = omero.cli.CLI()
     cli.loadplugins()
-    log.info('cmdline: %s', cmdline)
-    cli.invoke(cmdline)
+    tries = opts.get('tries', 1)
+    for n in xrange(tries):
+        log.info('cmdline (attempt %d): %s', n, cmdline)
+        cli.invoke(cmdline)
+        if cli.rv == 0:
+            return 0
+    return cli.rv
 
 
 def main(args, common, params):
@@ -117,13 +123,16 @@ def main(args, common, params):
         if args.login:
             cmd += ['-s', c.client.getProperty('omero.host'), '-p',
                    c.client.getProperty('omero.port'), '-k', sessionid]
-        print cmd, params, args.groupsize
-        paramslist = get_params_list(cmd, params, args.groupsize)
+        log.info('cmd: %s', cmd)
+        opts = {}
+        opts['tries'] = 10
+        paramslist = get_params_list(opts, cmd, params, args.groupsize)
+        log.info('Got paramslist')
 
         if args.dry_run:
             log.info('Command list:')
-            for p in paramslist:
-                log.info('  %s', p)
+            for o, p in paramslist:
+                log.info('  %s %s', o, p)
             return
 
         log.info('Creating pool of %d threads', args.threads)
