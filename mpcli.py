@@ -242,7 +242,3 @@ if __name__ == '__main__':
     except NameError:
         allargs = parse_args()
         main(*allargs)
-
-# Example:
-# mpcli.py --server server --user user --password password --groupsize 3 \
-#   --login --tries 3 cli import -d 1 -- a.img b.img c.img ...
