@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 #
-# Copyright (C) 2014 University of Dundee & Open Microscopy Environment.
+# Copyright (C) 2015 University of Dundee & Open Microscopy Environment.
 # All rights reserved.
 #
 # This program is free software; you can redistribute it and/or modify
@@ -116,7 +116,33 @@ def invokecli(args, dryrun=False):
         cli.invoke(cmdline)
         if cli.rv == 0:
             return 0
-    return cli.rv
+    return [cli.rv]
+
+
+def runscript(args, mode='process', dryrun=False):
+    opts, common, params = args
+    scriptname = common[0]
+    commonargs = common[1:]
+
+    log.info('Loading script: %s', scriptname)
+    env = {}
+    execfile(scriptname, env)
+
+    with MpOmeroCli(opts['host'], int(opts['port']),
+                    sessionid=opts['session']) as c:
+
+        if mode == 'get':
+            log.info('Running get()')
+            rs = env['get'](c.client, commonargs)
+            log.info('Script (get): %d results', len(rs))
+            return rs
+
+        if dryrun:
+            log.info('Script (dryrun): %s %s', commonargs, params)
+            return
+
+        rs = env['process'](c.client, commonargs, params)
+        return rs
 
 
 def main(args, common, params):
@@ -139,18 +165,25 @@ def main(args, common, params):
         opts['tries'] = args.tries
         opts['login'] = args.login
 
-        paramslist = get_params_list(opts, common, params, args.groupsize)
+        if args.mode == 'cli':
+            paramslist = get_params_list(opts, common, params, args.groupsize)
+            func = invokecli
+        else:
+            assert not params
+            params = runscript((opts, common, []), 'get')
+            paramslist = get_params_list(opts, common, params, args.groupsize)
+            func = runscript
 
         if args.dry_run:
             for ocp in paramslist:
-                invokecli(ocp, True)
+                func(ocp, dryrun=True)
             return
 
         log.info('Creating pool of %d threads', args.threads)
         pool = multiprocessing.Pool(args.threads)
         results = []
-        for r in pool.imap(invokecli, paramslist):
-            results.append(r)
+        for r in pool.imap(func, paramslist):
+            results.extend(r)
 
         log.info('Saving results to: %s', out)
         with open(out, 'wb') as f:
