@@ -92,16 +92,27 @@ class MpOmeroCli(object):
 
 def get_params_list(opts, common, params, groupsize):
     for i in xrange(0, len(params), groupsize):
-        yield (opts, list(common) + params[i:i + groupsize])
+        yield (opts, common, params[i:i + groupsize])
 
 
-def invokecli(args):
-    opts, cmdline = args
+def invokecli(args, dryrun=False):
+    opts, common, params = args
+    cmdline = common[:1]
+    if opts['login']:
+        cmdline += ['-s', opts['host'], '-p', opts['port'], '-k',
+                    opts['session']]
+    cmdline += common[1:] + params
+
+    if dryrun:
+        log.info('CLI (dryrun): %s', cmdline)
+        return
+
     cli = omero.cli.CLI()
     cli.loadplugins()
-    tries = opts.get('tries', 1)
+
+    tries = opts['tries']
     for n in xrange(tries):
-        log.info('cmdline (attempt %d): %s', n, cmdline)
+        log.info('CLI (attempt %d): %s', n, cmdline)
         cli.invoke(cmdline)
         if cli.rv == 0:
             return 0
@@ -119,25 +130,24 @@ def main(args, common, params):
     with MpOmeroCli(args.server, args.port, args.user, password=args.password,
                     detach=False) as c:
         sessionid = c.client.getSessionId()
-        cmd = common
-        if args.login:
-            cmd += ['-s', c.client.getProperty('omero.host'), '-p',
-                   c.client.getProperty('omero.port'), '-k', sessionid]
-        log.info('cmd: %s', cmd)
+        log.info('common: %s', common)
+
         opts = {}
-        opts['tries'] = 10
-        paramslist = get_params_list(opts, cmd, params, args.groupsize)
-        log.info('Got paramslist')
+        opts['host'] = c.client.getProperty('omero.host')
+        opts['port'] = c.client.getProperty('omero.port')
+        opts['session'] = sessionid
+        opts['tries'] = args.tries
+        opts['login'] = args.login
+
+        paramslist = get_params_list(opts, common, params, args.groupsize)
 
         if args.dry_run:
-            log.info('Command list:')
-            for o, p in paramslist:
-                log.info('  %s %s', o, p)
+            for ocp in paramslist:
+                invokecli(ocp, True)
             return
 
         log.info('Creating pool of %d threads', args.threads)
         pool = multiprocessing.Pool(args.threads)
-        #results = pool.map(invokecli, paramslist)
         results = []
         for r in pool.imap(invokecli, paramslist):
             results.append(r)
@@ -158,16 +168,23 @@ def parse_args(args=None):
     parser.add_argument('--user', default=None)
     parser.add_argument('--group', default=None, type=int)
     parser.add_argument('--password', default=None)
+
     parser.add_argument(
         '--threads', default=multiprocessing.cpu_count(), type=int)
-
-    parser.add_argument('-n', '--dry-run', action='store_true')
+    parser.add_argument('--tries', default=1, type=int,
+                        help='Retry on failure')
     parser.add_argument('--groupsize', default=1, type=int,
-                        help='Pass args in groups of this size')
+                        help='Pass mapargs in groups of this size')
     parser.add_argument('--login', action='store_true',
                         help='Include session login arguments in command')
 
-    parser.add_argument('other', nargs=argparse.REMAINDER)
+    parser.add_argument('-n', '--dry-run', action='store_true')
+
+    parser.add_argument('mode', choices=['cli', 'script'],
+                        help='Invoke an OMERO CLI command, or run a script')
+    parser.add_argument('other', nargs=argparse.REMAINDER, help=(
+        'CLI or script arguments in the form'
+        '"arg1 arg2 ... -- maparg1 maparg2 ..."'))
 
     args = parser.parse_args(args)
     common = []
@@ -194,5 +211,5 @@ if __name__ == '__main__':
         main(*allargs)
 
 # Example:
-# calculate.py --server server --user user --password password --groupsize 3 \
-#     --login import -d 1 -- a.img b.img c.img ...
+# mpcli.py --server server --user user --password password --groupsize 3 \
+#   --login --tries 3 cli import -d 1 -- a.img b.img c.img ...
