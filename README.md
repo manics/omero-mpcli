@@ -27,9 +27,9 @@ Script
 ------
 
 Obtain a list of inputs, then split the processing of these inputs into multiple processes.
-See `script-template.py`.
+See `script-template.py` and `examples/`.
 
 Example:
 
     mpcli.py --server server --user user --password password --groupsize 4 \
-        script script-template.py arguments for get
+        script script-template.py common arguments
