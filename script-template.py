@@ -42,7 +42,7 @@ def get(client):
 
 def process(client, common, params):
     """
-    This method will be called once a list of results from query() has been
+    This method will be called once a list of results from get() has been
     obtained.
 
     @param client: An OMERO client object

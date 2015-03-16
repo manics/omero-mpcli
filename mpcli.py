@@ -115,7 +115,7 @@ def invokecli(args, dryrun=False):
         log.info('CLI (attempt %d): %s', n, cmdline)
         cli.invoke(cmdline)
         if cli.rv == 0:
-            return 0
+            break
     return [cli.rv]
 
 
